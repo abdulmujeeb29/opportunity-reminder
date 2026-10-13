@@ -185,6 +185,7 @@ async def on_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def main() -> None:
     if not config.TELEGRAM_BOT_TOKEN:
         raise SystemExit("TELEGRAM_BOT_TOKEN is not set (see .env.example)")
+    db.init()
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
 

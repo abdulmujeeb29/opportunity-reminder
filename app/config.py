@@ -25,7 +25,8 @@ EMAIL_TO = [a.strip() for a in _env("EMAIL_TO").split(",") if a.strip()]  # comm
 TZ = ZoneInfo(_env("TIMEZONE", "Africa/Kigali"))
 REMINDER_HOUR = int(_env("REMINDER_HOUR", "8"))
 DIGEST_HOUR = int(_env("DIGEST_HOUR", "18"))  # Sundays
-DB_PATH = _env("DB_PATH", "data/reminders.db")
+DATABASE_URL = _env("DATABASE_URL")  # Postgres; set automatically when a ThalesOps DB is attached
+DB_PATH = _env("DB_PATH", "data/reminders.db")  # SQLite fallback for local runs
 
 # Days before the deadline. EMAIL_DAYS go to Telegram + email, NUDGE_DAYS to Telegram only.
 EMAIL_DAYS = (7, 3, 1, 0)

@@ -23,21 +23,22 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m app.bot
 ```
 
-## Deploy (Docker)
+## Deploy on ThalesOps
 
-```bash
-docker build -t opportunity-reminder .
-docker run -d --name opportunity-reminder --restart unless-stopped \
-  --env-file .env -v opportunity-reminder-data:/data opportunity-reminder
-```
+1. Create an app from this repo (Dockerfile build, no port needed).
+2. Provision a Postgres database and attach it to the app. That sets `DATABASE_URL`,
+   and the tables are created on first start.
+3. Add the other env vars from `.env.example`.
+4. Run **one** instance only. Two copies polling Telegram conflict.
 
-Mount `/data`: the SQLite database lives there. Run **one** instance only (Telegram polling).
+Without `DATABASE_URL` the bot uses a local SQLite file (`DB_PATH`). That's fine on your
+laptop, but a container without a volume loses it on every redeploy.
 
 ## Email sender
 
-`onboarding@resend.dev` works immediately but only delivers to your Resend account's address.
-For a proper sender, verify `mail.thalesops.com` in Resend and set
-`EMAIL_FROM=⏰ Opportunity Reminder <remind@mail.thalesops.com>`.
+Sent through Resend from a verified domain, e.g.
+`EMAIL_FROM=Opportunity Reminder <remind@mail.thalesops.com>`. `EMAIL_TO` takes several
+addresses separated by commas. Leave emojis out of the sender name; spam filters dislike them.
 
 ## Commands
 
