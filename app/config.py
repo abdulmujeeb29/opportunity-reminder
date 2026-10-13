@@ -31,6 +31,8 @@ DB_PATH = _env("DB_PATH", "data/reminders.db")  # SQLite fallback for local runs
 # Days before the deadline. EMAIL_DAYS go to Telegram + email, NUDGE_DAYS to Telegram only.
 EMAIL_DAYS = (7, 3, 1, 0)
 NUDGE_DAYS = (14, 10, 5, 2)
+# Open (or unclear) items with no deadline on the page get one this many days out.
+DEFAULT_DEADLINE_DAYS = 5
 
 
 def model_base_url() -> str:

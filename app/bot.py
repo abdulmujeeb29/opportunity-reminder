@@ -10,7 +10,7 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, Con
                           MessageHandler, filters)
 
 from . import config, db, extract, notify
-from .reminders import card, daily_job, refresh, today, weekly_digest
+from .reminders import card, daily_job, ensure_deadline, refresh, today, weekly_digest
 
 logging.basicConfig(format="%(asctime)s %(levelname)s %(name)s: %(message)s", level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -20,6 +20,7 @@ URL_RE = re.compile(r"https?://[^\s<>\"']+")
 HELP = """<b>Send me any application link</b> and I'll track it.
 
 • Open → I remind you at 14, 10, 7, 5, 3, 2, 1 days and on the day (7/3/1/day-of also by email)
+• No deadline on the page → I set one 5 days out
 • Closed → I check the page daily and tell you when it opens
 • Tap ✅ Applied to stop reminders
 
@@ -72,17 +73,20 @@ async def add_links(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             result = await extract.analyze(url, text, now)
         except (extract.FetchError, OpenAIError, ValueError) as exc:
             reason = exc if isinstance(exc, extract.FetchError) else "couldn't analyse the page"
-            item_id = db.add_item(url=url, title=url, status="unknown")
+            item = ensure_deadline(db.get_item(db.add_item(url=url, title=url, status="unknown")), now)
+            item_id = item["id"]
             await status.edit_text(
-                f"⚠️ Saved as #{item_id}, but {html.escape(str(reason))}.\n\n"
-                f"Set dates yourself:\n/deadline {item_id} 2026-12-31\n/opens {item_id} 2027-01-15",
+                f"⚠️ Saved as #{item_id}, but {html.escape(str(reason))}.\n"
+                f"I set a deadline {config.DEFAULT_DEADLINE_DAYS} days from now so you still get reminders.\n\n"
+                f"Fix the dates yourself:\n/deadline {item_id} 2026-12-31\n/opens {item_id} 2027-01-15",
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             continue
 
         item_id = db.add_item(url=url, page_hash=extract.page_hash(text), **result)
-        item = db.get_item(item_id)
-        hint = ("\n\n<i>No deadline found. Set it with</i> /deadline " + str(item_id) + " YYYY-MM-DD"
-                if item["status"] == "open" and not item["close_date"] else "")
+        item = ensure_deadline(db.get_item(item_id), now)
+        hint = (f"\n\n<i>No deadline on the page, so I set one {config.DEFAULT_DEADLINE_DAYS} days from now.</i>"
+                f" Change it with /deadline {item_id} YYYY-MM-DD"
+                if not result["close_date"] and item["close_date"] else "")
         await status.edit_text("📌 Tracking\n\n" + card(item, now) + hint, parse_mode=ParseMode.HTML,
                                disable_web_page_preview=True, reply_markup=notify.item_buttons(item_id))
 

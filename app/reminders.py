@@ -26,12 +26,13 @@ def describe(item, now: date) -> str:
     if item["state"] == "dropped":
         return "❌ Dropped"
     close, opens = db.parse_date(item["close_date"]), db.parse_date(item["open_date"])
-    if item["status"] == "open":
-        if not close:
-            return "🟢 Open · deadline not found (set it with /deadline)"
+    if item["status"] in ("open", "unknown") and close:
         days = (close - now).days
         left = "closes TODAY" if days == 0 else f"{days} day{'s' * (days != 1)} left"
-        return f"🟢 Open · closes {fmt_date(close)} ({left})"
+        label = "🟢 Open" if item["status"] == "open" else "❔ Status unclear"
+        return f"{label} · closes {fmt_date(close)} ({left})"
+    if item["status"] == "open":
+        return "🟢 Open · deadline not found (set it with /deadline)"
     if item["status"] == "closed":
         if opens and opens >= now:
             return f"🔒 Not open yet · expected {fmt_date(opens)}"
@@ -47,6 +48,15 @@ def card(item, now: date) -> str:
     lines.append(describe(item, now))
     lines.append(f'<a href="{e(item["url"])}">Open link</a>')
     return "\n".join(lines)
+
+
+def ensure_deadline(item, now: date):
+    """Open or unclear items with no deadline get one DEFAULT_DEADLINE_DAYS from now."""
+    if item["state"] != "watching" or item["status"] == "closed" or item["close_date"]:
+        return item
+    default = now + timedelta(days=config.DEFAULT_DEADLINE_DAYS)
+    db.update_item(item["id"], close_date=default.isoformat())
+    return db.get_item(item["id"])
 
 
 async def refresh(bot: Bot, item, now: date, force: bool = False):
@@ -65,10 +75,12 @@ async def refresh(bot: Bot, item, now: date, force: bool = False):
     result = await extract.analyze(item["url"], text, now)
     db.update_item(item["id"], page_hash=new_hash, last_checked=stamp, title=result["title"],
                    summary=result["summary"], status=result["status"],
-                   # Keep a date you set by hand if the page stops mentioning it.
+                   # Keep a date you set by hand if the page stops mentioning it,
+                   # but never carry over a deadline that has already passed.
                    open_date=result["open_date"] or item["open_date"],
-                   close_date=result["close_date"] or item["close_date"])
-    fresh = db.get_item(item["id"])
+                   close_date=result["close_date"] or (
+                       item["close_date"] if (db.parse_date(item["close_date"]) or now) >= now else None))
+    fresh = ensure_deadline(db.get_item(item["id"]), now)
 
     if item["status"] != "open" and fresh["status"] == "open":
         if db.mark_sent(fresh["id"], f"opened:{fresh['close_date'] or now.isoformat()}"):
@@ -84,7 +96,7 @@ async def refresh(bot: Bot, item, now: date, force: bool = False):
 
 async def deadline_reminders(bot: Bot, item, now: date) -> None:
     close = db.parse_date(item["close_date"])
-    if item["status"] != "open" or not close:
+    if item["status"] not in ("open", "unknown") or not close:
         return
     days = (close - now).days
 
@@ -109,7 +121,7 @@ async def deadline_reminders(bot: Bot, item, now: date) -> None:
 
 
 async def check_item(bot: Bot, item, now: date) -> None:
-    item = await refresh(bot, item, now)
+    item = ensure_deadline(await refresh(bot, item, now), now)
     opens = db.parse_date(item["open_date"])
     if item["status"] != "open" and opens == now and db.mark_sent(item["id"], f"expected:{opens}"):
         await notify.telegram(bot, "📅 <b>Expected to open today</b>, but the page doesn't show it "
